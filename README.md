@@ -20,4 +20,3 @@ A Blender Addon for transforming objects with a 3DConnexion mouse
 - Properties can only be adjusted after exiting the operator (See Use) Changing these settings may revert the transform.
 - Sensisitivy can be adjusted
 - Transforms will respect object and pose bone location/rotation locks. Use those to limit the affected axises
-- 
