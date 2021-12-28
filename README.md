@@ -15,3 +15,4 @@ A Blender Addon for transforming objects with a 3DConnexion mouse
 - Transforms will respect object and pose bone location/rotation locks
 - Tested only in object and pose mode.
 
+![A demo](./demo.gif)
