@@ -27,7 +27,7 @@ Ideas: fixed rotation mode instead of using delta
 import bpy
 from mathutils import Euler, Matrix, Vector
 from typing import Set, Tuple, Union
-from bpy.types import Context, Event, Object
+from bpy.types import Context, Event, Object, PoseBone
 from bpy.props import BoolProperty, StringProperty
 
 from .preferences import (
@@ -97,7 +97,7 @@ class NDOFTransformOperator(bpy.types.Operator):
             x if not l else old
             for x, old, l in zip(
                 new_matrix.to_euler(),
-                target.matrix_basis.to_euler(),
+                get_matrix(target).to_euler(),
                 target.lock_rotation,
             )
         )
@@ -105,18 +105,18 @@ class NDOFTransformOperator(bpy.types.Operator):
             x if not l else old
             for x, old, l in zip(
                 new_matrix.translation,
-                target.matrix_basis.translation,
+                get_matrix(target).translation,
                 target.lock_location,
             )
         )
         m = rot.to_matrix().to_4x4()
         m.translation = loc
-        target.matrix_basis = m
+        set_matrix(target, m)
 
     def rotate_target(self, view: Matrix, target: Object, rot: Tuple[int, int, int]):
         rot = rot[0], rot[1], -rot[2]
         mod = BENT_ROTATE_MOD if self.bend_mode else 1
-        world = Matrix(target.matrix_basis).copy()
+        world = Matrix(get_matrix(target)).copy()
         rot = Euler(x / 500 * mod for x in rot).to_matrix().to_4x4()
         world_centered = world.copy()
         world_centered.translation = Vector()
@@ -132,7 +132,7 @@ class NDOFTransformOperator(bpy.types.Operator):
         world_pos = Matrix()
         world_pos.translation = target.location
         a: Matrix = view.inverted_safe() @ (move @ (view @ world_pos))
-        world = Matrix(target.matrix_basis).copy()
+        world = Matrix(get_matrix(target)).copy()
         world.translation = a.translation
         self.update_target_matrix(target, world)
 
@@ -185,9 +185,9 @@ class NDOFTransformOperator(bpy.types.Operator):
         if not self.bend_mode:
             return
         if self.initial_transform is None:
-            self.initial_transform = target.matrix_basis.copy()
+            self.initial_transform = get_matrix(target).copy()
         else:
-            target.matrix_basis = self.initial_transform
+            set_matrix(target, self.initial_transform)
 
     def modal(self, context: Context, event: Event) -> Union[Set[int], Set[str]]:
 
@@ -202,13 +202,24 @@ class NDOFTransformOperator(bpy.types.Operator):
             view = get_preferred_active_view_rotation_matrix()
             mo = apply_event_preferences(mo)
             self.check_bend_mode(target)
-            if not self.locked_rotate:
+            if context.mode == "POSE" or not self.locked_rotate:
                 self.rotate_target(view, target, mo.rotation)
-            if not self.locked_translate:
+            if context.mode != "POSE" and not self.locked_translate:
                 self.translate_target(view, target, mo.translation)
 
         return {"RUNNING_MODAL"}
 
+def get_matrix(target: Object) -> Matrix:
+
+    if isinstance(target, PoseBone):
+        return target.matrix
+    return target.matrix_basis
+
+def set_matrix(target: Object, m: Matrix) -> Matrix:
+    if isinstance(target, PoseBone):
+        target.matrix = m
+    else:
+        target.matrix_basis = m
 
 def ndof_transform_menu(self, context: Context):
     self.layout.operator(NDOFTransformOperator.bl_idname, text="Enable NDOF Transform")
