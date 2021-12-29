@@ -1,22 +1,35 @@
 # 3DMousePlus Blender Addon
+![A demo](./demo.gif)
+
 A Blender Addon for transforming objects with a 3DConnexion mouse
 - Linux only
 ## Installation
-- libspnav (https://github.com/FreeSpacenav/libspnav)
-- Standard blender addon install (https://docs.blender.org/manual/en/latest/editors/preferences/addons.html#installing-add-ons)
+![How to install](./install.gif)
 
-![A demo](./demo.gif)
+## Windows
+- No additional installation steps required
+
+## Linux
+- OSX is untested but may work
+- Install [libspnav.so](https://github.com/FreeSpacenav/libspnav)
+    - Ubuntu: `sudo apt install libspnav-dev`
 
 ## Use
-- Transform mode is activated by pushing either button on the 3D mouse
+- Tool is activated by selecting an object an pushing a button on the 3D mouse
 - Transforms occur in global space transformed by the view matrix (Moving your viewport will affect how objects are transformed)
-- Uses the right button to toggle between "rotation only" and "translation only"
-- Left button will renable both translation and rotation
-- Space bar will toggle "bend mode"
-- ESC, Enter, and left/right mouse buttons will exit transform mode
+- The right button on the 3D mouse toggles between "rotation only" and "translation only" modes
+- And the left button will renable both translation and rotation
+- Pressing the space bar while using the tool will toggle "bend mode" (useful for armatures)
+- Use ESC, Enter, and left/right mouse buttons to exit transform mode
 - Tested only in object and pose mode.
 
 ## Configuration
-- Properties can only be adjusted after exiting the operator (See Use) Changing these settings may revert the transform.
-- Sensisitivy can be adjusted
-- Transforms will respect object and pose bone location/rotation locks. Use those to limit the affected axises
+
+- All options are in the addon preferences panel in the settings.
+- Axes can be flipped or inverted and the sensitivity can be adjusted here
+- Moving objects relative to viewport axes can be disabled for individual axes (or entirely if all axes are unchecked)
+![Settings](./settings.png)
+
+## Known Issues
+- No known issues
+- Report issues [here](https://github.com/sjkillen/3d-mouse-plus-blender/issues)
