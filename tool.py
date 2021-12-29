@@ -27,31 +27,26 @@ Ideas: fixed rotation mode instead of using delta
 import bpy
 from mathutils import Euler, Matrix, Vector
 from typing import Set, Tuple, Union
-from bpy.types import Context, Event, Object, SpaceView3D
-from bpy.props import BoolProperty, FloatProperty, StringProperty
+from bpy.types import Context, Event, Object
+from bpy.props import BoolProperty, StringProperty
 
+from .preferences import (
+    get_preferred_active_view_rotation_matrix,
+    apply_event_preferences,
+)
 from .listener import SpnavListener
 
 ERROR_MSG = "You must select a single object"
+BENT_ROTATE_MOD = 16
+BENT_TRANSLATE_MOD = 8
 
 
 class NDOFTransformOperator(bpy.types.Operator):
     bl_idname = "wm.ndoftransform"
     bl_label = "NDOFTransform"
-    bl_options = {"REGISTER", "UNDO"}
 
     btn: StringProperty(
         description="The button that was used to start operation", default="NONE"
-    )
-    sensitivity_rotate: FloatProperty(
-        name="Rotation sensitivity", min=0.0, soft_max=2.0, default=0.5
-    )
-    sensitivity_translate: FloatProperty(
-        name="Translation sensitivity",
-        min=0.0,
-        soft_max=0.01,
-        default=0.005,
-        precision=4,
     )
     locked_rotate: BoolProperty("Lock rotation", default=False)
     locked_translate: BoolProperty("Lock translation", default=False)
@@ -78,27 +73,6 @@ class NDOFTransformOperator(bpy.types.Operator):
             self.btn = event.type
         else:
             self.btn = "NONE"
-
-    def get_bent_rotate_sensitivity(self):
-        mod = 16
-        return self.sensitivity_rotate * (mod if self.bend_mode else 1)
-
-    def get_bent_translate_sensitivity(self):
-        mod = 8
-        return self.sensitivity_translate * (mod if self.bend_mode else 1)
-
-    def get_active_view_rotation_matrix(self, context: Context) -> Matrix:
-        if context.area is None:
-            return None
-        spaceview3d: SpaceView3D = next(
-            (space for space in context.area.spaces if isinstance(space, SpaceView3D)),
-            None,
-        )
-        if spaceview3d is None or spaceview3d.region_3d is None:
-            return None
-        matrix = Matrix(spaceview3d.region_3d.view_matrix)
-        matrix.translation = Vector()
-        return matrix
 
     def invoke(self, context: Context, event: Event) -> Union[Set[int], Set[str]]:
 
@@ -133,7 +107,7 @@ class NDOFTransformOperator(bpy.types.Operator):
                 new_matrix.translation,
                 target.matrix_basis.translation,
                 target.lock_location,
-            ) 
+            )
         )
         m = rot.to_matrix().to_4x4()
         m.translation = loc
@@ -141,9 +115,9 @@ class NDOFTransformOperator(bpy.types.Operator):
 
     def rotate_target(self, view: Matrix, target: Object, rot: Tuple[int, int, int]):
         rot = rot[0], rot[1], -rot[2]
-        sensitivity = self.get_bent_rotate_sensitivity()
+        mod = BENT_ROTATE_MOD if self.bend_mode else 1
         world = Matrix(target.matrix_basis).copy()
-        rot = Euler(x / 500 * sensitivity for x in rot).to_matrix().to_4x4()
+        rot = Euler(x / 500 * mod for x in rot).to_matrix().to_4x4()
         world_centered = world.copy()
         world_centered.translation = Vector()
         a: Matrix = (view.inverted_safe() @ (rot @ view)) @ world_centered
@@ -152,9 +126,9 @@ class NDOFTransformOperator(bpy.types.Operator):
 
     def translate_target(self, view: Matrix, target: Object, loc: Tuple[int, int, int]):
         loc = loc[0], loc[2], loc[1]
-        sensitivity = self.get_bent_translate_sensitivity()
+        mod = BENT_TRANSLATE_MOD if self.bend_mode else 1
         move = Matrix()
-        move.translation = Vector(x * sensitivity for x in loc)
+        move.translation = Vector(x * mod for x in loc)
         world_pos = Matrix()
         world_pos.translation = target.location
         a: Matrix = view.inverted_safe() @ (move @ (view @ world_pos))
@@ -162,8 +136,11 @@ class NDOFTransformOperator(bpy.types.Operator):
         world.translation = a.translation
         self.update_target_matrix(target, world)
 
-    def end_modal(self, context: Context, undo: bool):
+    def end_modal(self, context: Context, event: Event, undo: bool):
+        from .paywall import paywall
+
         spnav_listener.deactivate_motion()
+        paywall()
         return {"FINISHED"}
 
     def init_locks(self):
@@ -190,7 +167,7 @@ class NDOFTransformOperator(bpy.types.Operator):
             "RET",
         ):
             should_undo = event.type not in ("RET", "LEFTMOUSE")
-            return self.end_modal(context, should_undo)
+            return self.end_modal(context, event, should_undo)
         if event.type == "NDOF_BUTTON_FIT" and event.value == "RELEASE":
             self.flip_locks()
         if event.type == "NDOF_BUTTON_MENU" and event.value == "RELEASE":
@@ -222,7 +199,8 @@ class NDOFTransformOperator(bpy.types.Operator):
             target = context.selected_pose_bones[0]
 
         for mo in spnav_listener.motion_events():
-            view = self.get_active_view_rotation_matrix(context)
+            view = get_preferred_active_view_rotation_matrix()
+            mo = apply_event_preferences(mo)
             self.check_bend_mode(target)
             if not self.locked_rotate:
                 self.rotate_target(view, target, mo.rotation)

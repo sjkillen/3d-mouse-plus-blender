@@ -13,25 +13,29 @@
 # You should have received a copy of the GNU General Public License
 # along with this program. If not, see <http://www.gnu.org/licenses/>.
 
-bl_info = {
-    "name" : "3DMousePlus",
-    "author" : "Spencer Killen",
-    "description" : "Transform objects with a 3DConnexion mouse",
-    "blender" : (2, 80, 0),
-    "version" : (0, 0, 1),
-    "location" : "Select an object or pose bone and press a button on your 3D mouse",
-    "warning" : "",
-    "category" : "Object",
-    "doc_url": "https://github.com/sjkillen/3d-mouse-plus-blender",
-    "tracker_url": "https://github.com/sjkillen/3d-mouse-plus-blender/issues"
-}
+import bpy
+from bpy.types import Context, UIPopupMenu
+from itertools import count
 
-from . import auto_load
+try:
+    from . import nopaywall
 
-auto_load.init()
+    disabled = True
+except:
+    print("Paywall is enabled")
+    disabled = False
 
-def register():
-    auto_load.register()
+counter = count(-10)
 
-def unregister():
-    auto_load.unregister()
+
+def paywall():
+    if disabled:
+        return
+
+    def panel_draw(ui: UIPopupMenu, context: Context):
+        ui.layout.label(
+            text="Hi :) This is not a free addon. I'd really appreciate you purchasing it if you find it useful. Your support helps me develop more blender addons. In the addon preferences, visit the 'documentation' page for store links. Thanks :)"
+        )
+
+    for _ in range(next(counter)):
+        bpy.context.window_manager.popup_menu(panel_draw, title="", icon="INFO")
