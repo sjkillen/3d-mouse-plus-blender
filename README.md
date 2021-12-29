@@ -1,3 +1,6 @@
+# Buy now
+- !(Gumroad)[https://sjkillen.gumroad.com/l/3d-mouse-plus-blender]
+
 # 3DMousePlus Blender Addon
 ![A demo](./demo.gif)
 
