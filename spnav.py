@@ -14,13 +14,15 @@ THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND 
 '''
 
 '''
-sjkillen: [2021] X11 bindings removed due to their incompatibility with Python 3.X
+sjkillen: [2021] X11 bindings removed due to their incompatibility with Python 3.X and made it do nothing on windows
 '''
 
 from ctypes import cdll, c_int, c_uint, c_void_p, pointer, \
     Structure, Union
 
-libspnav = cdll.LoadLibrary('libspnav.so')
+from os import name as os_name
+if os_name != "nt":
+  libspnav = cdll.LoadLibrary('libspnav.so')
 
 SPNAV_EVENT_ANY = 0
 SPNAV_EVENT_MOTION = 1

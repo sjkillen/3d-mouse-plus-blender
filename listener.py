@@ -13,29 +13,32 @@
 # You should have received a copy of the GNU General Public License
 # along with this program. If not, see <http://www.gnu.org/licenses/>.
 
-from os import pipe, write
-from select import select
+from os import name as os_name
 from threading import Thread
-from time import sleep
-from typing import List, Union
-
+from typing import List
+from abc import ABC, abstractmethod
 from .spnav import (
-    spnav_open,
-    spnav_close,
-    spnav_fd,
-    spnav_poll_event,
     SpnavButtonEvent,
     SpnavMotionEvent,
 )
 
+if os_name == "nt":
+    from .spacenavigator import open as windows_open, SpaceNavigator
+else:
+    from os import pipe, write
+    from select import select
+    from .spnav import (
+        spnav_open,
+        spnav_close,
+        spnav_fd,
+        spnav_poll_event,
+    )
 
-class SpnavListener:
+
+class SpnavListenerBase(ABC):
     def __init__(self):
-        rx, self.__tx = pipe()
         self.__motion_events: List[SpnavMotionEvent] = None
         self.__button_events: List[SpnavButtonEvent] = None
-        self.__thread = Thread(target=self.__run_thread, args=(rx,))
-        self.__thread.start()
 
     def activate_motion(self):
         if self.__motion_events is None:
@@ -61,6 +64,20 @@ class SpnavListener:
         self.__button_events.clear()
         return consumed
 
+    @abstractmethod
+    def kill(self):
+        pass
+
+
+class SpnavListenerLinux(SpnavListenerBase):
+    "Button events implemented but not used. Just use Blender events"
+
+    def __init__(self):
+        super().__init__()
+        rx, self.__tx = pipe()
+        self.__thread = Thread(target=self.__run_thread, args=(rx,))
+        self.__thread.start()
+
     def kill(self):
         write(self.__tx, b"Die!")
         self.__thread.join()
@@ -78,10 +95,40 @@ class SpnavListener:
                 assert event is not None, "Why wasn't there an event?"
                 while event is not None:
                     if isinstance(event, SpnavButtonEvent):
-                        if self.__button_events is not None:
-                            self.__button_events.append(event)
+                        if self._SpnavListenerBase__button_events is not None:
+                            self._SpnavListenerBase__button_events.append(event)
                     elif isinstance(event, SpnavMotionEvent):
-                        if self.__motion_events is not None:
-                            self.__motion_events.append(event)
+                        if self._SpnavListenerBase__motion_events is not None:
+                            self._SpnavListenerBase__motion_events.append(event)
                     event = spnav_poll_event()
         spnav_close()
+
+
+class SpnavListenerWindows(SpnavListenerBase):
+    "Button events not implemented. Can just use blender events"
+
+    def __init__(self):
+        super().__init__()
+        self.__connection = windows_open(self.__callback)
+
+    def activate_button(self):
+        raise NotImplemented()
+
+    def kill(self):
+        self.__connection.close()
+
+    def __normalize_axis(self, vec):
+        return tuple(x * 500 for x in vec)
+
+    def __callback(self, state):
+        translation = self.__normalize_axis((state.x, state.y, state.z))
+        rotation = self.__normalize_axis((state.roll, state.pitch, state.yaw))
+        event = SpnavMotionEvent(translation, rotation, int(state.t))
+        if self._SpnavListenerBase__motion_events is not None:
+            self._SpnavListenerBase__motion_events.append(event)
+
+
+if os_name == "nt":
+    SpnavListener = SpnavListenerWindows
+else:
+    SpnavListener = SpnavListenerLinux
