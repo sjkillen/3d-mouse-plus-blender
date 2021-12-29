@@ -28,7 +28,7 @@ import bpy
 from mathutils import Euler, Matrix, Vector
 from typing import Set, Tuple, Union
 from bpy.types import Context, Event, Object, SpaceView3D
-from bpy.props import BoolProperty, FloatProperty, StringProperty, FloatVectorProperty
+from bpy.props import BoolProperty, FloatProperty, StringProperty
 
 from .listener import SpnavListener
 

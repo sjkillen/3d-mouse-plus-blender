@@ -56,14 +56,17 @@ def get_all_submodules(directory):
 
 def iter_submodules(path, package_name):
     for name in sorted(iter_submodule_names(path)):
-        yield importlib.import_module("." + name, package_name)
+        if "pywinusb" not in name and "spacenavigator" not in name:
+            yield importlib.import_module("." + name, package_name)
 
 def iter_submodule_names(path, root=""):
     for _, module_name, is_package in pkgutil.iter_modules([str(path)]):
         if is_package:
             sub_path = path / module_name
             sub_root = root + module_name + "."
-            yield from iter_submodule_names(sub_path, sub_root)
+
+            if "pywinusb" not in root:
+                yield from iter_submodule_names(sub_path, sub_root)
         else:
             yield root + module_name
 
