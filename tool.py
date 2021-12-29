@@ -27,8 +27,9 @@ Ideas: fixed rotation mode instead of using delta
 import bpy
 from mathutils import Euler, Matrix, Vector
 from typing import Set, Tuple, Union
-from bpy.types import Context, Event, Object, PoseBone
+from bpy.types import Context, Event, Object
 from bpy.props import BoolProperty, StringProperty
+from .matrix_memo import MatrixMemo
 
 from .preferences import (
     get_preferred_active_view_rotation_matrix,
@@ -54,6 +55,7 @@ class NDOFTransformOperator(bpy.types.Operator):
 
     def __init__(self):
         self.initial_transform = None
+        self.bend_transform = None
 
     @classmethod
     def poll(cls, context: Context):
@@ -64,6 +66,8 @@ class NDOFTransformOperator(bpy.types.Operator):
 
     def execute(self, context) -> Union[Set[int], Set[str]]:
         spnav_listener.activate_motion()
+        self.bend_transform = None
+        self.initial_transform = None
         return {"FINISHED"}
 
     def check_button_event(self, context: Context, event: Event):
@@ -87,17 +91,18 @@ class NDOFTransformOperator(bpy.types.Operator):
 
         self.check_button_event(context, event)
         context.window_manager.modal_handler_add(self)
-        target: Object = context.selected_objects[0]
         self.execute(context)
         return {"RUNNING_MODAL"}
 
-    def update_target_matrix(self, target: Object, new_matrix: Matrix):
+    def update_target_matrix(
+        self, target: Object, new_matrix: Matrix, memo: MatrixMemo
+    ):
         "Respect the target object's transform locks"
         rot = Euler(
             x if not l else old
             for x, old, l in zip(
                 new_matrix.to_euler(),
-                get_matrix(target).to_euler(),
+                memo.get_matrix().to_euler(),
                 target.lock_rotation,
             )
         )
@@ -105,26 +110,26 @@ class NDOFTransformOperator(bpy.types.Operator):
             x if not l else old
             for x, old, l in zip(
                 new_matrix.translation,
-                get_matrix(target).translation,
+                memo.get_matrix().translation,
                 target.lock_location,
             )
         )
         m = rot.to_matrix().to_4x4()
         m.translation = loc
-        set_matrix(target, m)
+        memo.set_matrix(m)
 
-    def rotate_target(self, view: Matrix, target: Object, rot: Tuple[int, int, int]):
+    def rotate_target(self, view: Matrix, target: Object, rot, memo: MatrixMemo):
         rot = rot[0], rot[1], -rot[2]
         mod = BENT_ROTATE_MOD if self.bend_mode else 1
-        world = Matrix(get_matrix(target)).copy()
+        world = Matrix(memo.get_matrix()).copy()
         rot = Euler(x / 500 * mod for x in rot).to_matrix().to_4x4()
         world_centered = world.copy()
         world_centered.translation = Vector()
         a: Matrix = (view.inverted_safe() @ (rot @ view)) @ world_centered
         a.translation = world.translation
-        self.update_target_matrix(target, a)
+        self.update_target_matrix(target, a, memo)
 
-    def translate_target(self, view: Matrix, target: Object, loc: Tuple[int, int, int]):
+    def translate_target(self, view: Matrix, target: Object, loc, memo: MatrixMemo):
         loc = loc[0], loc[2], loc[1]
         mod = BENT_TRANSLATE_MOD if self.bend_mode else 1
         move = Matrix()
@@ -132,13 +137,17 @@ class NDOFTransformOperator(bpy.types.Operator):
         world_pos = Matrix()
         world_pos.translation = target.location
         a: Matrix = view.inverted_safe() @ (move @ (view @ world_pos))
-        world = Matrix(get_matrix(target)).copy()
+        world = Matrix(memo.get_matrix()).copy()
         world.translation = a.translation
-        self.update_target_matrix(target, world)
+        self.update_target_matrix(target, world, memo)
 
-    def end_modal(self, context: Context, event: Event, undo: bool):
+    def end_modal(self, context: Context, event: Event, undo: bool, memo: MatrixMemo):
         from .paywall import paywall
 
+        if undo:
+            memo.set_matrix(self.initial_transform)
+        self.initial_transform = None
+        self.bend_transform = None
         spnav_listener.deactivate_motion()
         paywall()
         return {"FINISHED"}
@@ -159,7 +168,9 @@ class NDOFTransformOperator(bpy.types.Operator):
         if self.locked_translate == self.locked_rotate:
             self.init_locks()
 
-    def kb_events(self, context: Context, event: Event) -> Union[Set[int], Set[str]]:
+    def kb_events(
+        self, context: Context, event: Event, memo
+    ) -> Union[Set[int], Set[str]]:
         if event.type in (
             "ESC",
             "RIGHTMOUSE",
@@ -167,7 +178,7 @@ class NDOFTransformOperator(bpy.types.Operator):
             "RET",
         ):
             should_undo = event.type not in ("RET", "LEFTMOUSE")
-            return self.end_modal(context, event, should_undo)
+            return self.end_modal(context, event, should_undo, memo)
         if event.type == "NDOF_BUTTON_FIT" and event.value == "RELEASE":
             self.flip_locks()
         if event.type == "NDOF_BUTTON_MENU" and event.value == "RELEASE":
@@ -178,48 +189,39 @@ class NDOFTransformOperator(bpy.types.Operator):
 
     def toggle_bend_mode(self):
         if self.bend_mode:
-            self.initial_transform = None
+            self.bend_transform = None
         self.bend_mode = not self.bend_mode
 
-    def check_bend_mode(self, target: Object):
+    def check_bend_mode(self, target: Object, memo: MatrixMemo):
         if not self.bend_mode:
             return
-        if self.initial_transform is None:
-            self.initial_transform = get_matrix(target).copy()
+        if self.bend_transform is None:
+            self.bend_transform = memo.get_matrix()
         else:
-            set_matrix(target, self.initial_transform)
+            memo.set_matrix(self.bend_transform)
 
     def modal(self, context: Context, event: Event) -> Union[Set[int], Set[str]]:
-
-        if should_return := self.kb_events(context, event):
-            return should_return
-
         target = context.selected_objects[0]
         if context.selected_pose_bones:
             target = context.selected_pose_bones[0]
+        memo = MatrixMemo(target)
+        if self.initial_transform is None:
+            self.initial_transform = memo.get_matrix()
+
+        if should_return := self.kb_events(context, event, memo):
+            return should_return
 
         for mo in spnav_listener.motion_events():
             view = get_preferred_active_view_rotation_matrix()
             mo = apply_event_preferences(mo)
-            self.check_bend_mode(target)
+            self.check_bend_mode(target, memo)
             if context.mode == "POSE" or not self.locked_rotate:
-                self.rotate_target(view, target, mo.rotation)
+                self.rotate_target(view, target, mo.rotation, memo)
             if context.mode != "POSE" and not self.locked_translate:
-                self.translate_target(view, target, mo.translation)
+                self.translate_target(view, target, mo.translation, memo)
 
         return {"RUNNING_MODAL"}
 
-def get_matrix(target: Object) -> Matrix:
-
-    if isinstance(target, PoseBone):
-        return target.matrix
-    return target.matrix_basis
-
-def set_matrix(target: Object, m: Matrix) -> Matrix:
-    if isinstance(target, PoseBone):
-        target.matrix = m
-    else:
-        target.matrix_basis = m
 
 def ndof_transform_menu(self, context: Context):
     self.layout.operator(NDOFTransformOperator.bl_idname, text="Enable NDOF Transform")
