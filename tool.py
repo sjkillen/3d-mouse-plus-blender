@@ -26,9 +26,10 @@ Ideas: fixed rotation mode instead of using delta
 
 import bpy
 from mathutils import Euler, Matrix, Vector
-from typing import Set, Tuple, Union
+from typing import Set, Union
 from bpy.types import Context, Event, Object
 from bpy.props import BoolProperty, StringProperty
+from .spnav import SpnavMotionEvent
 from .matrix_memo import MatrixMemo
 
 from .preferences import (
@@ -56,6 +57,9 @@ class NDOFTransformOperator(bpy.types.Operator):
     def __init__(self):
         self.initial_transform = None
         self.bend_transform = None
+        self.finished = False
+        self.mouse_at_rest = False
+        self.should_undo = False
 
     @classmethod
     def poll(cls, context: Context):
@@ -141,16 +145,22 @@ class NDOFTransformOperator(bpy.types.Operator):
         world.translation = a.translation
         self.update_target_matrix(target, world, memo)
 
-    def end_modal(self, context: Context, event: Event, undo: bool, memo: MatrixMemo):
+    def end_modal(self, memo: MatrixMemo):
         from .paywall import paywall
 
-        if undo:
+        if self.should_undo:
             memo.set_matrix(self.initial_transform)
+        self.finished = False
+        self.mouse_at_rest = False
         self.initial_transform = None
+        self.should_undo = False
         self.bend_transform = None
-        spnav_listener.deactivate_motion()
         paywall()
+        spnav_listener.deactivate_motion()
         return {"FINISHED"}
+
+    def finish(self):
+        self.finished = True
 
     def init_locks(self):
         self.locked_translate = True
@@ -168,37 +178,38 @@ class NDOFTransformOperator(bpy.types.Operator):
         if self.locked_translate == self.locked_rotate:
             self.init_locks()
 
-    def kb_events(
-        self, context: Context, event: Event, memo
-    ) -> Union[Set[int], Set[str]]:
+    def kb_events(self, event: Event):
         if event.type in (
             "ESC",
             "RIGHTMOUSE",
             "LEFTMOUSE",
             "RET",
         ):
-            should_undo = event.type not in ("RET", "LEFTMOUSE")
-            return self.end_modal(context, event, should_undo, memo)
-        if event.type == "NDOF_BUTTON_FIT" and event.value == "RELEASE":
+            self.should_undo = event.type not in ("RET", "LEFTMOUSE")
+            self.finish()
+        elif event.type == "NDOF_BUTTON_FIT" and event.value == "RELEASE":
             self.flip_locks()
-        if event.type == "NDOF_BUTTON_MENU" and event.value == "RELEASE":
+        elif event.type == "NDOF_BUTTON_MENU" and event.value == "RELEASE":
             self.reset_locks()
-        if event.type == "SPACE" and event.value == "RELEASE":
+        elif event.type == "SPACE" and event.value == "RELEASE":
             self.toggle_bend_mode()
-        return None
 
     def toggle_bend_mode(self):
         if self.bend_mode:
             self.bend_transform = None
         self.bend_mode = not self.bend_mode
 
-    def check_bend_mode(self, target: Object, memo: MatrixMemo):
+    def check_bend_mode(self, memo: MatrixMemo):
         if not self.bend_mode:
             return
         if self.bend_transform is None:
             self.bend_transform = memo.get_matrix()
         else:
             memo.set_matrix(self.bend_transform)
+
+    def check_mouse_at_rest(self, ev: SpnavMotionEvent):
+        self.mouse_at_rest = all(x == 0 for x in (*ev.translation, *ev.rotation))
+        return self.mouse_at_rest
 
     def modal(self, context: Context, event: Event) -> Union[Set[int], Set[str]]:
         target = context.selected_objects[0]
@@ -208,13 +219,19 @@ class NDOFTransformOperator(bpy.types.Operator):
         if self.initial_transform is None:
             self.initial_transform = memo.get_matrix()
 
-        if should_return := self.kb_events(context, event, memo):
-            return should_return
+        self.kb_events(event)
+        if self.finished and self.mouse_at_rest:
+            return self.end_modal(memo)
 
         for mo in spnav_listener.motion_events():
+            if (resting := self.check_mouse_at_rest(mo)) or self.finished:
+                if self.finished and resting:
+                    return self.end_modal(memo)
+                else:
+                    continue
             view = get_preferred_active_view_rotation_matrix()
             mo = apply_event_preferences(mo)
-            self.check_bend_mode(target, memo)
+            self.check_bend_mode(memo)
             if context.mode == "POSE" or not self.locked_rotate:
                 self.rotate_target(view, target, mo.rotation, memo)
             if context.mode != "POSE" and not self.locked_translate:
