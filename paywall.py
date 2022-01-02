@@ -34,7 +34,7 @@ def paywall():
 
     def panel_draw(ui: UIPopupMenu, context: Context):
         ui.layout.label(
-            text="Hi :) This is not a free addon. I'd really appreciate you purchasing it if you find it useful. Your support helps me develop more blender addons. In the addon preferences, visit the 'documentation' page for store links. Thanks :)"
+            text="I need caffeine to keep going. caffeine costs money. please buy this addon :)"
         )
 
     for _ in range(next(counter)):
