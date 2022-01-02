@@ -36,5 +36,4 @@ Support for Windows and Linux.
 ![Settings](./settings.png)
 
 ## Known Issues
-- No known issues
 - Report issues [here](https://github.com/sjkillen/3d-mouse-plus-blender/issues)
