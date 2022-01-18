@@ -257,15 +257,16 @@ def register():
     if addon_kc is not None:
         for mode in ("Pose", "Object Mode"):
             km = addon_kc.keymaps.new(name=f"{mode}", space_type="EMPTY")
-            kmi1 = km.keymap_items.new(
-                NDOFTransformOperator.bl_idname, type="NDOF_BUTTON_MENU", value="ANY"
+            buttons = ("MENU", "FIT", "1", "2")
+            kmis = tuple(
+                km.keymap_items.new(
+                    NDOFTransformOperator.bl_idname,
+                    type=f"NDOF_BUTTON_{button}",
+                    value="ANY",
+                )
+                for button in buttons
             )
-            kmi2 = km.keymap_items.new(
-                NDOFTransformOperator.bl_idname,
-                type="NDOF_BUTTON_FIT",
-                value="ANY",
-            )
-            addon_keymaps.append((km, (kmi1, kmi2)))
+            addon_keymaps.append((km, kmis))
 
 
 def unregister():
