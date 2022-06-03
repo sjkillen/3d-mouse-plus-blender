@@ -45,7 +45,7 @@ BENT_TRANSLATE_MOD = 8
 
 class NDOFTransformOperator(bpy.types.Operator):
     bl_idname = "wm.ndoftransform"
-    bl_label = "NDOFTransform"
+    bl_label = "Activate 3DMousePlus Mode"
 
     btn: StringProperty(
         description="The button that was used to start operation", default="NONE"
@@ -187,11 +187,11 @@ class NDOFTransformOperator(bpy.types.Operator):
         ):
             self.should_undo = event.type not in ("RET", "LEFTMOUSE")
             self.finish()
-        elif event.type == "NDOF_BUTTON_FIT" and event.value == "RELEASE":
+        elif event.type == self.get_kb(ToggleModeLock) and event.value == "RELEASE":
             self.flip_locks()
-        elif event.type == "NDOF_BUTTON_MENU" and event.value == "RELEASE":
+        elif event.type == self.get_kb(ResetModeLock) and event.value == "RELEASE":
             self.reset_locks()
-        elif event.type == "SPACE" and event.value == "RELEASE":
+        elif event.type == self.get_kb(ToggleBend) and event.value == "RELEASE":
             self.toggle_bend_mode()
 
     def toggle_bend_mode(self):
@@ -210,6 +210,11 @@ class NDOFTransformOperator(bpy.types.Operator):
     def check_mouse_at_rest(self, ev: SpnavMotionEvent):
         self.mouse_at_rest = all(x == 0 for x in (*ev.translation, *ev.rotation))
         return self.mouse_at_rest
+
+    def get_kb(self, operator) -> str:
+        km = bpy.context.window_manager.keyconfigs.user.keymaps["Object Mode"]
+        kb =  km.keymap_items.find_from_operator(operator.bl_idname).type
+        return kb
 
     def modal(self, context: Context, event: Event) -> Union[Set[int], Set[str]]:
         target = context.selected_objects[0]
@@ -244,6 +249,30 @@ def ndof_transform_menu(self, context: Context):
     self.layout.operator(NDOFTransformOperator.bl_idname, text="Enable NDOF Transform")
 
 
+class ToggleModeLock(bpy.types.Operator):
+    bl_idname = "object.ndoftransformtogglemodelock"
+    bl_label = "3DMousePlus: Toggle Rotation/Translation"
+
+    def execute(self, context):
+        return {"FINISHED"}
+
+
+class ResetModeLock(bpy.types.Operator):
+    bl_idname = "object.ndoftransformresetmodelock"
+    bl_label = "3DMousePlus: Reset Rotation/Translation Lock"
+
+    def execute(self, context):
+        return {"FINISHED"}
+
+
+class ToggleBend(bpy.types.Operator):
+    bl_idname = "object.ndoftransformtogglebendmode"
+    bl_label = "3DMousePlus: Toggle Bend Mode"
+
+    def execute(self, context):
+        return {"FINISHED"}
+
+
 spnav_listener: SpnavListener = None
 addon_keymaps = []
 
@@ -254,19 +283,39 @@ def register():
     # Add operator to search
     bpy.types.VIEW3D_MT_view.append(ndof_transform_menu)
     addon_kc = bpy.context.window_manager.keyconfigs.addon
-    if addon_kc is not None:
-        for mode in ("Pose", "Object Mode"):
-            km = addon_kc.keymaps.new(name=f"{mode}", space_type="EMPTY")
-            buttons = ("MENU", "FIT", "1", "2")
-            kmis = tuple(
-                km.keymap_items.new(
-                    NDOFTransformOperator.bl_idname,
-                    type=f"NDOF_BUTTON_{button}",
-                    value="ANY",
-                )
-                for button in buttons
+    if addon_kc is None:
+        return
+    for mode in ("Pose", "Object Mode"):
+        km = addon_kc.keymaps.new(name=mode, space_type="EMPTY")
+        buttons = ("MENU", "FIT", "1", "2")
+        kmis = tuple(
+            km.keymap_items.new(
+                NDOFTransformOperator.bl_idname,
+                type=f"NDOF_BUTTON_{button}",
+                value="ANY",
             )
-            addon_keymaps.append((km, kmis))
+            for button in buttons
+        )
+        addon_keymaps.append((km, kmis))
+
+
+    km = addon_kc.keymaps.new(name="Object Mode", space_type="EMPTY")
+
+    km.keymap_items.new(
+        ToggleModeLock.bl_idname,
+        type="NDOF_BUTTON_FIT",
+        value="ANY",
+    )
+    km.keymap_items.new(
+        ResetModeLock.bl_idname,
+        type="NDOF_BUTTON_MENU",
+        value="ANY",
+    )
+    km.keymap_items.new(
+        ToggleBend.bl_idname,
+        type="SPACE",
+        value="ANY",
+    )
 
 
 def unregister():
