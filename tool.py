@@ -13,16 +13,6 @@
 # You should have received a copy of the GNU General Public License
 # along with this program. If not, see <http://www.gnu.org/licenses/>.
 
-"""
-An operator to consume events from the listener module and transform objects accordingly
-Although the listener module is capable of polling events without blocking,
-we listen for NDOF events here because its not safe for the listener module cannot touch blender structures
-(See https://docs.blender.org/api/current/info_gotcha.html#strange-errors-when-using-the-threading-module)
-and this gives us a method of gaurenteeing safety.
-
-Ideas: fixed rotation mode instead of using delta
-"""
-
 
 import bpy
 from mathutils import Euler, Matrix, Vector
@@ -102,14 +92,6 @@ class NDOFTransformOperator(bpy.types.Operator):
         self, target: Object, new_matrix: Matrix, memo: MatrixMemo
     ):
         "Respect the target object's transform locks"
-        rot = Euler(
-            x if not l else old
-            for x, old, l in zip(
-                new_matrix.to_euler(),
-                memo.get_matrix().to_euler(),
-                target.lock_rotation,
-            )
-        )
         loc = Vector(
             x if not l else old
             for x, old, l in zip(
@@ -118,9 +100,16 @@ class NDOFTransformOperator(bpy.types.Operator):
                 target.lock_location,
             )
         )
-        m = rot.to_matrix().to_4x4()
-        m.translation = loc
-        memo.set_matrix(m)
+        rot = Euler(
+            x if not l else old
+            for x, old, l in zip(
+                new_matrix.to_euler(),
+                memo.get_matrix().to_euler(),
+                target.lock_rotation,
+            )
+        )
+        scale = Vector(target.scale)
+        memo.set_matrix(Matrix.LocRotScale(loc, rot, scale))
 
     def rotate_target(self, view: Matrix, target: Object, rot, memo: MatrixMemo):
         rot = rot[0], rot[1], -rot[2]
