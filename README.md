@@ -2,16 +2,13 @@
 ![A demo](./demo.gif)
 
 A Blender Addon for transforming objects with a 3DConnexion mouse.
-Support for Windows and Linux.
-
-# Purchase
-- [Gumroad](https://sjkillen.gumroad.com/l/3d-mouse-plus-blender)
-- [Free trial](https://github.com/sjkillen/3d-mouse-plus-blender/releases/download/Demo/3d-mouse-plus-blender.zip)
+Support for Linux.
 
 ## Installation
 ![How to install](./install.gif)
 
-## Windows
+## ~~Windows Support~~
+- Currently broken See [#11](https://github.com/sjkillen/3d-mouse-plus-blender/issues/11)
 - No additional installation steps required
 
 ## Linux
@@ -36,4 +33,5 @@ Support for Windows and Linux.
 ![Settings](./settings.png)
 
 ## Known Issues
+- Windows support is currently broken See [#11](https://github.com/sjkillen/3d-mouse-plus-blender/issues/11)
 - Report issues [here](https://github.com/sjkillen/3d-mouse-plus-blender/issues)
